@@ -146,9 +146,9 @@ const App: React.FC = () => {
   const handleLogin = async (username: string, password: string) => {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ username, password }),
       });
@@ -171,9 +171,9 @@ const App: React.FC = () => {
   const handleRegister = async (username: string, password: string) => {
     try {
       const response = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ username, password }),
       });
