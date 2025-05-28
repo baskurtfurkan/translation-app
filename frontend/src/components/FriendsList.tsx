@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import { theme } from "../styles/theme";
 import CallInterface from "./CallInterface";
+import IncomingCallDialog from "./IncomingCallDialog";
 
 const Container = styled.div`
   background-color: ${theme.colors.background};
@@ -140,6 +141,29 @@ const FriendsList: React.FC<FriendsListProps> = ({
   pendingRequestsCount,
 }) => {
   const [activeCall, setActiveCall] = useState<string | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{
+    username: string;
+    offer: RTCSessionDescriptionInit;
+  } | null>(null);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on(
+        "incoming_call",
+        (data: { caller: string; offer: RTCSessionDescriptionInit }) => {
+          setIncomingCall({
+            username: data.caller,
+            offer: data.offer,
+          });
+        }
+      );
+    }
+    return () => {
+      if (socket) {
+        socket.off("incoming_call");
+      }
+    };
+  }, [socket]);
 
   const formatLastSeen = (dateString: string) => {
     if (!dateString) return "";
@@ -167,6 +191,17 @@ const FriendsList: React.FC<FriendsListProps> = ({
 
   const handleEndCall = () => {
     setActiveCall(null);
+  };
+
+  const handleAcceptCall = () => {
+    if (incomingCall) {
+      setActiveCall(incomingCall.username);
+      setIncomingCall(null);
+    }
+  };
+
+  const handleRejectCall = () => {
+    setIncomingCall(null);
   };
 
   return (
@@ -225,6 +260,16 @@ const FriendsList: React.FC<FriendsListProps> = ({
           username={currentUsername}
           targetUser={activeCall}
           onClose={handleEndCall}
+        />
+      )}
+
+      {incomingCall && (
+        <IncomingCallDialog
+          socket={socket}
+          callerUsername={incomingCall.username}
+          offer={incomingCall.offer}
+          onAccept={handleAcceptCall}
+          onReject={handleRejectCall}
         />
       )}
     </>

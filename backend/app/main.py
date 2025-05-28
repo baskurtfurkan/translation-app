@@ -37,7 +37,7 @@ friends: Dict[str, List[str]] = {}  # username -> [friend_usernames]
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,18 +88,20 @@ async def call_user(sid, data):
     callee_username = data.get('callee')
     offer = data.get('offer')
     
-    if callee_username in active_users:
-        callee_sid = active_users[callee_username]
-        # Send call offer to callee
-        await sio.emit('incoming_call', {
-            'caller': caller_username,
-            'offer': offer
-        }, room=callee_sid)
-    else:
-        # Notify caller that callee is offline
-        await sio.emit('call_failed', {
-            'message': 'User is offline'
-        }, room=sid)
+    if not caller_username or not callee_username or not offer:
+        await sio.emit('error', {'message': 'Invalid call data'}, room=sid)
+        return
+        
+    if callee_username not in active_users:
+        await sio.emit('error', {'message': 'User is not online'}, room=sid)
+        return
+        
+    # Arama bildirimini hedef kullanıcıya gönder
+    callee_sid = active_users[callee_username]
+    await sio.emit('incoming_call', {
+        'caller': caller_username,
+        'offer': offer
+    }, room=callee_sid)
 
 @sio.on('call_response')
 async def call_response(sid, data):
@@ -107,30 +109,58 @@ async def call_response(sid, data):
     answer = data.get('answer')
     accepted = data.get('accepted')
     
-    if caller_username in active_users:
-        caller_sid = active_users[caller_username]
-        if accepted:
-            await sio.emit('call_accepted', {
-                'answer': answer
-            }, room=caller_sid)
-        else:
-            await sio.emit('call_rejected', room=caller_sid)
+    if not caller_username or not accepted:
+        await sio.emit('error', {'message': 'Invalid response data'}, room=sid)
+        return
+        
+    if caller_username not in active_users:
+        await sio.emit('error', {'message': 'Caller is not online'}, room=sid)
+        return
+        
+    caller_sid = active_users[caller_username]
+    
+    if accepted:
+        if not answer:
+            await sio.emit('error', {'message': 'Missing answer data'}, room=sid)
+            return
+            
+        # Kabul edildiğinde answer'ı gönder
+        await sio.emit('call_accepted', {
+            'answer': answer
+        }, room=caller_sid)
+    else:
+        # Reddedildiğinde bildir
+        await sio.emit('call_rejected', room=caller_sid)
 
 @sio.on('ice_candidate')
 async def handle_ice_candidate(sid, data):
     target_username = data.get('target')
     candidate = data.get('candidate')
     
-    if target_username in active_users:
-        target_sid = active_users[target_username]
-        await sio.emit('ice_candidate', {
-            'candidate': candidate
-        }, room=target_sid)
+    if not target_username or not candidate:
+        await sio.emit('error', {'message': 'Invalid ICE candidate data'}, room=sid)
+        return
+        
+    if target_username not in active_users:
+        await sio.emit('error', {'message': 'Target user is not online'}, room=sid)
+        return
+        
+    # ICE adayını karşı tarafa ilet
+    target_sid = active_users[target_username]
+    await sio.emit('ice_candidate', {
+        'candidate': candidate
+    }, room=target_sid)
 
 @sio.on('end_call')
 async def end_call(sid, data):
     target_username = data.get('target')
+    
+    if not target_username:
+        await sio.emit('error', {'message': 'Invalid end call data'}, room=sid)
+        return
+        
     if target_username in active_users:
+        # Karşı tarafa aramanın sonlandırıldığını bildir
         target_sid = active_users[target_username]
         await sio.emit('call_ended', room=target_sid)
 
