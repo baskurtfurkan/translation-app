@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import styled from "styled-components";
 import { theme } from "../styles/theme";
 import { FaPhone, FaPhoneSlash } from "react-icons/fa";
@@ -43,7 +43,7 @@ const Button = styled.button<{ isAccept?: boolean }>`
   height: 50px;
   border-radius: 50%;
   border: none;
-  background-color: ${props =>
+  background-color: ${(props) =>
     props.isAccept ? theme.colors.success : theme.colors.error};
   color: white;
   display: flex;
@@ -67,32 +67,34 @@ const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
 }) => {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
 
-  useEffect(() => {
-    setupPeerConnection();
-    return () => {
+  const setupPeerConnection = async () => {
+    try {
+      // Eğer önceki bağlantı varsa kapat
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
       }
-    };
-  }, []);
 
-  const setupPeerConnection = async () => {
-    try {
-      const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+      // Yeni bağlantı oluştur
+      const configuration = {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      };
       const peerConnection = new RTCPeerConnection(configuration);
       peerConnectionRef.current = peerConnection;
 
-      // Local stream'i al ve ekle
+      // Medya stream'ini al
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
 
-      stream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, stream);
+      // Track'leri ekle
+      stream.getTracks().forEach((track) => {
+        if (peerConnection.signalingState !== "closed") {
+          peerConnection.addTrack(track, stream);
+        }
       });
 
-      // ICE adaylarını dinle ve gönder
+      // ICE adaylarını dinle
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit("ice_candidate", {
@@ -103,7 +105,9 @@ const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
       };
 
       // Remote description'ı ayarla
-      await peerConnection.setRemoteDescription(offer);
+      await peerConnection.setRemoteDescription(
+        new RTCSessionDescription(offer)
+      );
 
       // Answer oluştur
       const answer = await peerConnection.createAnswer();
@@ -111,7 +115,7 @@ const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
 
       return answer;
     } catch (error) {
-      console.error("Error setting up peer connection:", error);
+      console.error("Peer bağlantısı kurulurken hata:", error);
       throw error;
     }
   };
@@ -126,12 +130,15 @@ const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
       });
       onAccept();
     } catch (error) {
-      console.error("Error accepting call:", error);
+      console.error("Arama kabul edilirken hata:", error);
       onReject();
     }
   };
 
   const handleReject = () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+    }
     socket.emit("call_response", {
       caller: callerUsername,
       accepted: false,
@@ -154,4 +161,4 @@ const IncomingCallDialog: React.FC<IncomingCallDialogProps> = ({
   );
 };
 
-export default IncomingCallDialog; 
+export default IncomingCallDialog;
